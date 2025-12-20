@@ -1,0 +1,84 @@
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  email     String   @unique
+  password  String
+
+  createdTasks  Task[] @relation("CreatedTasks")
+  assignedTasks Task[] @relation("AssignedTasks")
+  notifications Notification[]
+  createdAt DateTime @default(now())
+}
+
+model Task {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  title         String
+  description   String?
+  dueDate       DateTime
+  priority      Priority
+  status        Status
+
+  creatorId     String   @db.ObjectId
+  creator       User     @relation("CreatedTasks", fields: [creatorId], references: [id])
+
+  assignedToId  String?  @db.ObjectId
+  assignedTo    User?    @relation("AssignedTasks", fields: [assignedToId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([creatorId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
+}
+
+enum Priority {
+  Low
+  Medium
+  High
+  Urgent
+}
+
+enum Status {
+  ToDo
+  InProgress
+  Review
+  Completed
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?    // Store task details or any other data
+  
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  TaskAssigned
+  TaskUpdated
+  TaskCompleted
+  TaskDeleted
+  TaskCommented
+}

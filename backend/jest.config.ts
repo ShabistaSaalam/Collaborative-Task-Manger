@@ -1,0 +1,7 @@
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  testMatch: ['**/__tests__/**/*.test.ts'],
+  testSequencer: './testSequencer.js',
+};
