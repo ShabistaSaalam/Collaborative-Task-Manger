@@ -3,4 +3,4 @@ node_modules
 .env
 
 /src/generated/prisma
-/src/utils/auditLogger.ts
+#/src/utils/auditLogger.ts

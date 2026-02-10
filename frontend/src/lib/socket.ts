@@ -1,7 +1,6 @@
 import { io, Socket } from 'socket.io-client';
-
-const SOCKET_URL = import.meta.env.VITE_WS_URL || 'http://localhost:4000';
-
+import { config } from './env';
+const SOCKET_URL = config.wsUrl;
 let socket: Socket | null = null;
 
 export const initializeSocket = (userId?: string): Socket => {

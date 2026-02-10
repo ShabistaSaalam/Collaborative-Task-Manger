@@ -471,7 +471,7 @@ MIT License
 
 ## 👨‍💻 Author
 
-**Shabista Saalam**
+**Shabistha**
 - GitHub: [@ShabistaSaalam](https://github.com/ShabistaSaalam)
 - Repository: [Collaborative-Task-Manger](https://github.com/ShabistaSaalam/Collaborative-Task-Manger)
 

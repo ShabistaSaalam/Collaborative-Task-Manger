@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+package-lock.json.bak
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Backend specific
+backend/logs/
+backend/dist/
+backend/prisma/client.js
+backend/prisma/client.d.ts
+backend/prisma/client.js.map
+backend/prisma/client.d.ts.map
+
+# Frontend specific
+frontend/dist/
+frontend/.vite/
+frontend/build/
+
+# Testing
+coverage/
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Misc
+.cache/
+temp/
+tmp/

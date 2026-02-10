@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import http from "http";
-import prisma from "../prisma/client"; // ⬅️ ADD THIS
+import prisma from "../prisma/client";
+import { config } from "./config/env";
 
 let io: Server;
 
@@ -11,7 +12,7 @@ let io: Server;
 export function initSocket(server: http.Server) {
   io = new Server(server, {
     cors: {
-      origin: true,
+      origin: config.clientUrl,
       credentials: true,
     },
   });
@@ -23,7 +24,7 @@ export function initSocket(server: http.Server) {
      * Each user joins a room with their userId
      * This allows private notifications
      */
-    socket.on("join:user", async (userId: string) => { // ⬅️ MAKE ASYNC
+    socket.on("join:user", async (userId: string) => {
       socket.join(userId);
       console.log(`👤 User joined room: ${userId}`);
       
@@ -64,7 +65,7 @@ export function initSocket(server: http.Server) {
  */
 export function getIO() {
   // ✅ Return mock for tests
-  if (process.env.NODE_ENV === "test") {
+  if (config.isTest) {
     return {
       emit: () => {},
       to: () => ({ emit: () => {} }),

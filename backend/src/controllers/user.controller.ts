@@ -3,6 +3,8 @@ import { z, ZodError } from "zod";
 import * as userService from "../services/user.service";
 import { AuthRequest } from "../middlewares/auth.middleware";
 import jwt from "jsonwebtoken";
+import { config } from "../config/env";
+
 const updateProfileSchema = z.object({
   name: z.string().min(2).optional(),
   email: z.string().email().optional(),
@@ -41,13 +43,13 @@ export async function updateProfile(req: AuthRequest, res: Response) {
         email: updatedUser.email,
         name: updatedUser.name,
       },
-      process.env.JWT_SECRET!,
-      { expiresIn: "7d" }
+      config.jwtSecret,
+      { expiresIn: config.jwtExpiresIn } as any
     );
 
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: config.isProduction,
       sameSite: "strict",
     });
 

@@ -22,11 +22,11 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Info } from 'lucide-react';
+import { userApi } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
-import axios from 'axios';
 
 const taskSchema = z.object({
-  title: z.string().min(1, 'Title is required').max(100),
+  title: z.string().min(1, 'Title is required').max(100, 'Title must be less than 100 characters'),
   description: z.string().optional(),
   dueDate: z.string().min(1, 'Due date is required'),
   priority: z.enum(['Low', 'Medium', 'High', 'Urgent'] as const),
@@ -64,10 +64,11 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
   const [loadingUsers, setLoadingUsers] = useState(false);
   const { user } = useAuthStore();
 
+  // Check if current user is the creator or assignee
   const isCreator = task?.creatorId === user?.id;
   const isAssignee = task?.assignedToId === user?.id;
-  const isTaskAssigned = Boolean(task?.assignedToId);
-  const canOnlyEditStatus = task && isAssignee && !isCreator;
+  const isTaskAssigned = task?.assignedToId !== null && task?.assignedToId !== undefined && task?.assignedToId !== '';
+  const canOnlyEditStatus = task && isAssignee && !isCreator; // Assignee can only edit status
 
   const {
     register,
@@ -88,7 +89,7 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
     },
   });
 
-  // Fetch users when dialog opens (only if task is not already assigned)
+  // Fetch users when dialog opens (only if task is not assigned yet)
   useEffect(() => {
     if (open && !isTaskAssigned) {
       fetchUsers();
@@ -98,7 +99,7 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
   const fetchUsers = async () => {
     try {
       setLoadingUsers(true);
-      const response = await axios.get('/api/users');
+      const response = await userApi.getAllUsers();
       setUsers(response.data.users || []);
     } catch (error) {
       console.error('Failed to fetch users:', error);
@@ -107,13 +108,12 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
     }
   };
 
-  // Reset form when task changes or dialog opens
   useEffect(() => {
     if (task) {
       reset({
         title: task.title,
         description: task.description || '',
-        dueDate: task.dueDate.slice(0, 16),
+        dueDate: task.dueDate.slice(0, 16), // Format for datetime-local input
         priority: task.priority,
         status: task.status,
         assignedToId: task.assignedToId || '',
@@ -131,33 +131,43 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
   }, [task, reset]);
 
   const handleFormSubmit = async (data: TaskFormData) => {
-    await onSubmit(data);
+    // If user can only edit status, send only status in the update
+    if (canOnlyEditStatus) {
+      // Send only status field to backend
+      await onSubmit({ status: data.status } as any);
+    } else {
+      await onSubmit(data);
+    }
+    reset();
   };
 
   const priority = watch('priority');
   const status = watch('status');
   const assignedToId = watch('assignedToId');
+
+  // Get assigned user name for display
   const assignedUser = task?.assignedTo;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full sm:max-w-md max-h-[90vh] overflow-y-auto sm:mx-auto">
+      <DialogContent className="w-full sm:max-w-[500px] max-h-[90vh] overflow-y-auto mx-1 sm:mx-auto">
         <DialogHeader>
           <DialogTitle className="text-xl">
             {task ? (canOnlyEditStatus ? 'Update Task Status' : 'Edit Task') : 'Create New Task'}
           </DialogTitle>
         </DialogHeader>
 
+        {/* Info Alert for Assignees */}
         {canOnlyEditStatus && (
-          <Alert className="border-blue-200 bg-blue-50 flex items-start gap-2">
-            <Info className="h-4 w-4 text-blue-600 mt-1" />
+          <Alert className="border-blue-200 bg-blue-50">
+            <Info className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-sm text-gray-800">
               As an assignee, you can only update the task status. Other fields are read-only.
             </AlertDescription>
           </Alert>
         )}
 
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="mt-4 space-y-4">
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5 mt-4">
           <div className="space-y-2">
             <Label htmlFor="title">Title *</Label>
             <Input
@@ -165,9 +175,11 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
               placeholder="Enter task title..."
               {...register('title')}
               readOnly={canOnlyEditStatus}
-              className={`${errors.title ? 'border-destructive' : ''} ${canOnlyEditStatus ? 'bg-muted cursor-not-allowed' : ''}`}
+              className={`${errors.title ? 'border-destructive' : ''} ${canOnlyEditStatus ? 'bg-gray-200 cursor-not-allowed' : ''}`}
             />
-            {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
+            {errors.title && (
+              <p className="text-sm text-destructive">{errors.title.message}</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -178,7 +190,7 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
               rows={3}
               {...register('description')}
               readOnly={canOnlyEditStatus}
-              className={canOnlyEditStatus ? 'bg-muted cursor-not-allowed' : ''}
+              className={canOnlyEditStatus ? 'bg-gray-200 cursor-not-allowed' : ''}
             />
           </div>
 
@@ -189,23 +201,36 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
               type="datetime-local"
               {...register('dueDate')}
               readOnly={canOnlyEditStatus}
-              className={`${errors.dueDate ? 'border-destructive' : ''} ${canOnlyEditStatus ? 'bg-muted cursor-not-allowed' : ''}`}
+              className={`${errors.dueDate ? 'border-destructive' : ''} ${canOnlyEditStatus ? 'bg-gray-200 cursor-not-allowed' : ''}`}
             />
-            {errors.dueDate && <p className="text-sm text-destructive">{errors.dueDate.message}</p>}
+            {errors.dueDate && (
+              <p className="text-sm text-destructive">{errors.dueDate.message}</p>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Priority *</Label>
               {canOnlyEditStatus ? (
-                <Input value={priority} readOnly className="bg-muted cursor-not-allowed" />
+                <Input
+                  value={priority}
+                  readOnly
+                  className="bg-gray-200 cursor-not-allowed"
+                />
               ) : (
-                <Select value={priority} onValueChange={(value: Priority) => setValue('priority', value)}>
+                <Select
+                  value={priority}
+                  onValueChange={(value: Priority) => setValue('priority', value)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
                   <SelectContent>
-                    {priorities.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    {priorities.map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               )}
@@ -213,12 +238,19 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
 
             <div className="space-y-2">
               <Label>Status *</Label>
-              <Select value={status} onValueChange={(value: Status) => setValue('status', value)}>
+              <Select
+                value={status}
+                onValueChange={(value: Status) => setValue('status', value)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {statuses.map(s => <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>)}
+                  {statuses.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {statusLabels[s]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -230,26 +262,30 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
               <Input
                 value={assignedUser ? `${assignedUser.name} (${assignedUser.email})` : 'Assigned'}
                 readOnly
-                className="bg-muted cursor-not-allowed"
+                className="bg-gray-200 cursor-not-allowed"
               />
             ) : (
               <Select
                 value={assignedToId || 'unassigned'}
-                onValueChange={v => setValue('assignedToId', v === 'unassigned' ? '' : v)}
+                onValueChange={(value) => setValue('assignedToId', value === 'unassigned' ? '' : value)}
                 disabled={loadingUsers}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={loadingUsers ? 'Loading users...' : 'Select user'} />
+                  <SelectValue placeholder={loadingUsers ? "Loading users..." : "Select user"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>)}
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name} ({user.email})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-3">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
             <Button
               type="button"
               variant="outline"
@@ -259,7 +295,7 @@ export function TaskForm({ open, onOpenChange, task, onSubmit, isSubmitting }: T
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto flex items-center justify-center">
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {task ? 'Update Task' : 'Create Task'}
             </Button>

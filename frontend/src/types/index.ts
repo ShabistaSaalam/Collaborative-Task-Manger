@@ -9,6 +9,7 @@ export interface User {
 
 export interface Task {
   id: string;
+  clientId?:string;
   title: string;
   description?: string;
   dueDate: string;

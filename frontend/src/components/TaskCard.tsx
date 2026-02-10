@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Task } from '@/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,56 +14,55 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Calendar, Edit2, Trash2, User, Clock, Loader2 } from 'lucide-react';
-import { format, isPast, isToday } from 'date-fns';
+import { format, isPast, isToday, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface TaskCardProps {
   task: Task;
   onEdit: (task: Task) => void;
-  onDelete: (taskId: string) => Promise<void>;
+  onDelete: (taskId: string) => void;
 }
 
-/* -------------------- UI MAPPINGS -------------------- */
-const priorityColors = {
+const priorityColors: Record<string, string> = {
   Low: 'bg-muted text-muted-foreground',
   Medium: 'bg-primary/10 text-primary border-primary/20',
-  High: 'bg-warning/10 text-warning border-warning/20',
+  High: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
   Urgent: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
-const statusColors = {
+const statusColors: Record<string, string> = {
   ToDo: 'bg-muted text-muted-foreground',
   InProgress: 'bg-primary/10 text-primary border-primary/20',
-  Review: 'bg-warning/10 text-warning border-warning/20',
-  Completed: 'bg-success/10 text-success border-success/20',
+  Review: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+  Completed: 'bg-green-500/10 text-green-600 border-green-500/20',
 };
 
-const statusLabels = {
+const statusLabels: Record<string, string> = {
   ToDo: 'To Do',
   InProgress: 'In Progress',
   Review: 'Review',
   Completed: 'Completed',
 };
 
-/* -------------------- COMPONENT -------------------- */
 export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // 🛡️ BLOCK TEMP IDs: Check if the task is still being created
+  const isSyncing = task.id.toString().startsWith('temp-');
 
-  const dueDate = new Date(task.dueDate);
-  const isOverdue = isPast(dueDate) && task.status !== 'Completed';
-  const isDueToday = isToday(dueDate);
+  const dateObj = useMemo(() => {
+    const d = new Date(task.dueDate);
+    return isValid(d) ? d : null;
+  }, [task.dueDate]);
 
-  const handleDeleteConfirm = async () => {
-    setIsDeleting(true);
-    try {
-      await onDelete(task.id);
+  const isOverdue = dateObj ? isPast(dateObj) && task.status !== 'Completed' : false;
+  const isDueToday = dateObj ? isToday(dateObj) : false;
+
+  const handleDeleteConfirm = () => {
+    // This will now only ever fire with a real MongoDB ID
+    if (!isSyncing) {
+      onDelete(task.id);
       setShowDeleteDialog(false);
-    } catch (error) {
-      // Error is handled by parent component
-      console.error('Delete failed:', error);
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -71,22 +70,34 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
     <>
       <Card
         className={cn(
-          'group transition-all duration-200 hover:shadow-medium animate-fade-in',
-          isOverdue && 'border-destructive/50 bg-destructive/5'
+          'group relative transition-all duration-200 hover:shadow-md animate-fade-in',
+          isOverdue && 'border-destructive/50 bg-destructive/5',
+          isSyncing && 'opacity-70 grayscale-[0.5]' // Visual cue it's not "real" yet
         )}
       >
+        {/* Loader Overlay for Optimistic Tasks */}
+        {isSyncing && (
+          <div className="absolute top-2 right-2">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold text-lg leading-tight line-clamp-2">
               {task.title}
             </h3>
 
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className={cn(
+              "flex gap-1 transition-opacity",
+              isSyncing ? "opacity-20 pointer-events-none" : "opacity-0 group-hover:opacity-100"
+            )}>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => onEdit(task)}
+                disabled={isSyncing}
               >
                 <Edit2 className="h-4 w-4" />
               </Button>
@@ -96,6 +107,7 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
                 size="icon"
                 className="h-8 w-8 text-destructive hover:bg-destructive/10"
                 onClick={() => setShowDeleteDialog(true)}
+                disabled={isSyncing}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -111,11 +123,12 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
           )}
 
           <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className={priorityColors[task.priority]}>
+            <Badge variant="outline" className={cn("font-medium", priorityColors[task.priority] || 'bg-muted')}>
               {task.priority}
             </Badge>
-            <Badge variant="outline" className={statusColors[task.status]}>
-              {statusLabels[task.status]}
+            <Badge variant="outline" className={cn("font-medium", statusColors[task.status] || 'bg-muted')}>
+              {/* Added fallback to task.status to prevent blank cards */}
+              {statusLabels[task.status] || task.status}
             </Badge>
           </div>
 
@@ -123,60 +136,41 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
             <div
               className={cn(
                 'flex items-center gap-2',
-                isOverdue
-                  ? 'text-destructive'
-                  : isDueToday
-                  ? 'text-warning'
-                  : 'text-muted-foreground'
+                isOverdue ? 'text-destructive font-medium' : isDueToday ? 'text-orange-600' : 'text-muted-foreground'
               )}
             >
-              {isOverdue ? (
-                <Clock className="h-4 w-4" />
-              ) : (
-                <Calendar className="h-4 w-4" />
-              )}
+              {isOverdue ? <Clock className="h-4 w-4" /> : <Calendar className="h-4 w-4" />}
               <span>
                 {isOverdue ? 'Overdue: ' : isDueToday ? 'Due today: ' : ''}
-                {format(dueDate, 'MMM d, yyyy h:mm a')}
+                {dateObj ? format(dateObj, 'MMM d, yyyy h:mm a') : 'No date set'}
               </span>
             </div>
 
             {task.assignedTo && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <User className="h-4 w-4" />
-                <span>Assigned to: {task.assignedTo.name}</span>
+                <span className="truncate">Assigned: {task.assignedTo.name}</span>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* -------------------- DELETE DIALOG -------------------- */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{task.title}"? This action cannot
-              be undone.
+              Are you sure you want to delete "{task.title}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDeleteConfirm}
-              disabled={isDeleting}
             >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                'Delete'
-              )}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

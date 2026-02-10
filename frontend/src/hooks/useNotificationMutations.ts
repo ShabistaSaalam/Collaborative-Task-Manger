@@ -36,8 +36,6 @@ export const useNotifications = () => {
   return useQuery<Notification[]>({
     queryKey: ["notifications"],
     queryFn: notificationApi.getAll,
-    refetchInterval: 30000, // Refetch every 30 seconds
-    staleTime: 25000, // Consider data stale after 25 seconds
   });
 };
 

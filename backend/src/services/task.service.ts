@@ -13,6 +13,7 @@ export type CreateTaskInput = {
 
 /**
  * 🔔 Helper: Save notification to DB and emit via socket
+ * @returns notification object or null if failed
  */
 async function createAndEmitNotification(
   userId: string,
@@ -20,7 +21,7 @@ async function createAndEmitNotification(
   title: string,
   message: string,
   data: any
-) {
+): Promise<void> {
   try {
     // Save to database
     const notification = await prisma.notification.create({
@@ -46,10 +47,11 @@ async function createAndEmitNotification(
       createdAt: notification.createdAt,
     });
 
-    console.log(`✅ Notification saved and emitted to ${userId}`);
-    return notification;
+    console.log(`✅ Notification created and emitted to ${userId}`);
   } catch (error) {
-    console.error("Error creating notification:", error);
+    // Log error but don't throw - notification failure shouldn't break task operations
+    console.error("❌ Failed to create/emit notification:", error);
+    console.error(`   User: ${userId}, Type: ${type}, Title: ${title}`);
   }
 }
 
@@ -78,8 +80,6 @@ export async function createTask(creatorId: string, input: CreateTaskInput) {
 
   // 🔔 Notify assigned user
   if (task.assignedToId && task.assignedTo) {
-    console.log("🔔 Creating notification for:", task.assignedToId);
-
     await createAndEmitNotification(
       task.assignedToId,
       "TaskAssigned",

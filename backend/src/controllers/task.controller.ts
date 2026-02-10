@@ -3,14 +3,23 @@ import { ZodError } from "zod";
 import { createTaskSchema, updateTaskSchema } from "../dtos/task.dto";
 import * as taskService from "../services/task.service";
 import { AuthRequest } from "../middlewares/auth.middleware";
-import { auditLogger } from "../utils/auditLogger"; // ✅ ADD THIS
+import { auditLogger } from "../utils/auditLogger";
 
+/**
+ * Helper to build audit-safe user object
+ */
+function auditUser(req: AuthRequest) {
+  return {
+    id: req.user!.id,
+    email: req.user!.email,
+  };
+}
+
+// 🔹 CREATE TASK
 export async function createTask(req: AuthRequest, res: Response) {
   try {
-    // 1️⃣ Validate request body using Zod
     const parsed = createTaskSchema.parse(req.body);
 
-    // 2️⃣ Normalize optional fields (important for exactOptionalPropertyTypes)
     const validated = {
       title: parsed.title,
       dueDate: parsed.dueDate,
@@ -24,30 +33,22 @@ export async function createTask(req: AuthRequest, res: Response) {
       }),
     };
 
-    // 3️⃣ Call service (creatorId comes from JWT via requireAuth)
     const task = await taskService.createTask(req.user!.id, validated);
 
-    // ✅ 4️⃣ AUDIT LOG - Task Created
+    // ✅ AUDIT LOG
     auditLogger.logTaskCreated(
-      {
-        id: req.user!.id,
-        name: req.user!.name || 'Unknown User',
-        email: req.user!.email,
-      },
+      auditUser(req),
       {
         id: task.id,
         title: task.title,
-      },
-      req.ip
+      }
     );
 
-    // 5️⃣ Send response
     return res.status(201).json({ task });
   } catch (err) {
     if (err instanceof ZodError) {
       return res.status(400).json({ errors: err.issues });
     }
-
     return res.status(500).json({ message: "Server error" });
   }
 }
@@ -84,13 +85,13 @@ export async function getMyCreatedTasks(req: AuthRequest, res: Response) {
 
 // 🔹 UPDATE TASK
 export async function updateTask(
-  req: Request<{ id: string }> & { user?: { id: string; email: string; name?: string } },
+  req: AuthRequest & Request<{ id: string }>,
   res: Response
 ) {
   try {
     const parsed = updateTaskSchema.parse(req.body);
 
-    // Remove undefined keys
+    // Build validated object without using 'any'
     const validated: {
       title?: string;
       description?: string;
@@ -98,85 +99,94 @@ export async function updateTask(
       priority?: "Low" | "Medium" | "High" | "Urgent";
       status?: "ToDo" | "InProgress" | "Review" | "Completed";
       assignedToId?: string;
-    } = {};
+    } = {
+      ...(parsed.title !== undefined && { title: parsed.title }),
+      ...(parsed.description !== undefined && { description: parsed.description }),
+      ...(parsed.dueDate !== undefined && { dueDate: parsed.dueDate }),
+      ...(parsed.priority !== undefined && { priority: parsed.priority }),
+      ...(parsed.status !== undefined && { status: parsed.status }),
+      ...(parsed.assignedToId !== undefined && { assignedToId: parsed.assignedToId }),
+    };
 
-    Object.keys(parsed).forEach((key) => {
-      const value = (parsed as any)[key];
-      if (value !== undefined) {
-        (validated as any)[key] = value;
-      }
-    });
-
-    // ✅ Get old task data BEFORE updating
+    // Get old task before update
     const oldTask = await taskService.getTaskById(req.params.id);
 
-    // Update the task
     const task = await taskService.updateTask(
       req.params.id,
       req.user!.id,
       validated
     );
 
-    // ✅ AUDIT LOG - Track what changed
+    // Track changes
     const changes: { field: string; oldValue: any; newValue: any }[] = [];
 
     if (validated.title && validated.title !== oldTask.title) {
       changes.push({
-        field: 'title',
+        field: "title",
         oldValue: oldTask.title,
         newValue: validated.title,
       });
     }
-    if (validated.description !== undefined && validated.description !== oldTask.description) {
+
+    if (
+      validated.description !== undefined &&
+      validated.description !== oldTask.description
+    ) {
       changes.push({
-        field: 'description',
-        oldValue: oldTask.description || 'none',
-        newValue: validated.description || 'none',
+        field: "description",
+        oldValue: oldTask.description ?? "none",
+        newValue: validated.description ?? "none",
       });
     }
+
     if (validated.status && validated.status !== oldTask.status) {
       changes.push({
-        field: 'status',
+        field: "status",
         oldValue: oldTask.status,
         newValue: validated.status,
       });
     }
+
     if (validated.priority && validated.priority !== oldTask.priority) {
       changes.push({
-        field: 'priority',
+        field: "priority",
         oldValue: oldTask.priority,
         newValue: validated.priority,
       });
     }
-    if (validated.dueDate && new Date(validated.dueDate).toISOString() !== new Date(oldTask.dueDate).toISOString()) {
+
+    if (
+      validated.dueDate &&
+      new Date(validated.dueDate).toISOString() !==
+        new Date(oldTask.dueDate).toISOString()
+    ) {
       changes.push({
-        field: 'dueDate',
+        field: "dueDate",
         oldValue: oldTask.dueDate,
         newValue: validated.dueDate,
       });
     }
-    if (validated.assignedToId !== undefined && validated.assignedToId !== oldTask.assignedToId) {
+
+    if (
+      validated.assignedToId !== undefined &&
+      validated.assignedToId !== oldTask.assignedToId
+    ) {
       changes.push({
-        field: 'assignedToId',
-        oldValue: oldTask.assignedToId || 'unassigned',
-        newValue: validated.assignedToId || 'unassigned',
+        field: "assignedToId",
+        oldValue: oldTask.assignedToId ?? "unassigned",
+        newValue: validated.assignedToId ?? "unassigned",
       });
     }
 
-    // Only log if there are actual changes
+    // Audit only if changes exist
     if (changes.length > 0) {
       auditLogger.logTaskUpdated(
-        {
-          id: req.user!.id,
-          name: req.user!.name || 'Unknown User',
-          email: req.user!.email,
-        },
+        auditUser(req),
         {
           id: task.id,
           title: task.title,
         },
-        changes,
-        req.ip
+        changes
       );
     }
 
@@ -191,30 +201,20 @@ export async function updateTask(
 
 // 🔹 DELETE TASK
 export async function deleteTask(
-  req: Request<{ id: string }> & { user?: { id: string; email: string; name?: string } },
+  req: AuthRequest & Request<{ id: string }>,
   res: Response
 ) {
   try {
-    // ✅ Get task data BEFORE deleting (for audit log)
     const task = await taskService.getTaskById(req.params.id);
 
-    await taskService.deleteTask(
-      req.params.id,
-      req.user!.id
-    );
+    await taskService.deleteTask(req.params.id, req.user!.id);
 
-    // ✅ AUDIT LOG - Task Deleted
     auditLogger.logTaskDeleted(
-      {
-        id: req.user!.id,
-        name: req.user!.name || 'Unknown User',
-        email: req.user!.email,
-      },
+      auditUser(req),
       {
         id: task.id,
         title: task.title,
-      },
-      req.ip
+      }
     );
 
     return res.json({ message: "Task deleted successfully" });
@@ -223,6 +223,7 @@ export async function deleteTask(
   }
 }
 
+// 🔹 FILTERED TASKS
 export async function getFilteredTasks(req: AuthRequest, res: Response) {
   try {
     const { status, priority, sort } = req.query;
@@ -234,7 +235,7 @@ export async function getFilteredTasks(req: AuthRequest, res: Response) {
     });
 
     return res.json({ tasks });
-  } catch (err) {
+  } catch {
     return res.status(500).json({ message: "Server error" });
   }
 }

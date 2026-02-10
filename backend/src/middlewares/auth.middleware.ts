@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction, RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 
 // ✅ Extend Express Request type
@@ -6,7 +6,7 @@ export interface AuthRequest extends Request {
   user?: {
     id: string;
     email: string;
-    name: string;
+    name?: string;
   };
 }
 
@@ -14,20 +14,19 @@ export interface AuthRequest extends Request {
  * Middleware to protect routes
  * Verifies JWT from HttpOnly cookie
  */
-export function requireAuth(
-  req: AuthRequest,
+export const requireAuth: RequestHandler = (
+  req: Request,
   res: Response,
   next: NextFunction
-) {
+): void => {
   try {
-    // 1️⃣ Get token from cookie
     const token = req.cookies?.token;
 
     if (!token) {
-      return res.status(401).json({ message: "Authentication required" });
+      res.status(401).json({ message: "Authentication required" });
+      return;
     }
 
-    // 2️⃣ Verify token
     const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET!
@@ -37,16 +36,15 @@ export function requireAuth(
       name: string;
     };
 
-    // 3️⃣ Attach user to request
-    req.user = {
+    (req as AuthRequest).user = {
       id: decoded.userId,
       email: decoded.email,
       name: decoded.name,
     };
 
-    // 4️⃣ Continue to controller
     next();
   } catch (error) {
-    return res.status(401).json({ message: "Invalid or expired token" });
+    res.status(401).json({ message: "Invalid or expired token" });
+    return;
   }
-}
+};

@@ -7,6 +7,7 @@ import {
   loginUser,
   LoginUserInput,
 } from "../services/auth.service";
+import { config } from "../config/env";
 
 // Schemas
 const registerSchema = z.object({
@@ -32,14 +33,14 @@ export async function registerController(req: Request, res: Response) {
     // 3️⃣ Generate JWT including name
     const token = jwt.sign(
       { userId: user.id, email: user.email, name: user.name },
-      process.env.JWT_SECRET!,
-      { expiresIn: "7d" }
+      config.jwtSecret,
+      { expiresIn: config.jwtExpiresIn } as any
     );
 
     // 4️⃣ Set HttpOnly cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: config.isProduction,
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
@@ -69,14 +70,14 @@ export async function loginController(req: Request, res: Response) {
     // 3️⃣ Generate JWT including name
     const token = jwt.sign(
       { userId: user.id, email: user.email, name: user.name },
-      process.env.JWT_SECRET!,
-      { expiresIn: "7d" }
+      config.jwtSecret,
+      { expiresIn: config.jwtExpiresIn } as any
     );
 
     // 4️⃣ Set HttpOnly cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: config.isProduction,
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
@@ -98,9 +99,9 @@ export async function loginController(req: Request, res: Response) {
 export function logoutController(req: Request, res: Response) {
   res.clearCookie("token", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
-    path: "/", // must match cookie path when set
+    secure: config.isProduction,
+    sameSite: config.isProduction ? "strict" : "lax",
+    path: "/",
   });
 
   return res.status(200).json({ message: "Logged out successfully" });

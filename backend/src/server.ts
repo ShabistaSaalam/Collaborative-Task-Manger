@@ -1,6 +1,7 @@
 import http from "http";
 import app from "./app";
 import { initSocket } from "./socket";
+import { config } from "./config/env";
 
 // 🔥 Create HTTP server
 const server = http.createServer(app);
@@ -9,6 +10,7 @@ const server = http.createServer(app);
 initSocket(server);
 
 // 🚀 Start server
-server.listen(4000, () => {
-  console.log("Server running on http://localhost:4000");
+server.listen(config.port, () => {
+  console.log(`✅ Server running on http://localhost:${config.port}`);
+  console.log(`🌍 Environment: ${config.nodeEnv}`);
 });
